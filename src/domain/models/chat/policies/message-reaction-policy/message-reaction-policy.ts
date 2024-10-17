@@ -20,7 +20,7 @@ export class MessageReactionPolicy extends ValueObjectBase<MessageReactionPolicy
 
     if (hasConflict)
       throw new Error(
-        "Allowed reactions has conflict with restricted reactions"
+        "Allowed reactions has conflict with restricted reactions."
       );
   };
 
