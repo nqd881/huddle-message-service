@@ -1,7 +1,15 @@
-import { Id, Prop, StateAggregateBase, StateAggregateBuilder } from "ddd-node";
+import {
+  Id,
+  Model,
+  Prop,
+  PropsValidator,
+  StateAggregateBase,
+  StateAggregateBuilder,
+} from "ddd-node";
 import { MessageForwardOrigin } from "./message-forward-origin";
 import { MessageCreated, MessageEdited } from "./events";
 import { MessageContentLike, MessageUpdate } from "./message-content";
+import { MessageEdition } from "./message-edition";
 
 export interface MessageProps {
   chatId: Id;
@@ -9,13 +17,17 @@ export interface MessageProps {
   content: MessageContentLike;
   sentAt: Date;
   editable: boolean;
-  edited: boolean;
-  editedAt?: Date;
+  editions: MessageEdition[];
   fwdOrigin?: MessageForwardOrigin;
   replyMessageId?: Id;
 }
 
+@Model({
+  propsValidator: Message.Validator,
+})
 export class Message extends StateAggregateBase<MessageProps> {
+  static Validator: PropsValidator<Message> = (props) => {};
+
   static create(props: MessageProps) {
     const messageBuilder = new StateAggregateBuilder(Message);
 
@@ -42,12 +54,25 @@ export class Message extends StateAggregateBase<MessageProps> {
   @Prop()
   private declare editable: boolean;
 
+  @Prop()
+  private declare editions: MessageEdition[];
+
   get contentType() {
     return this._props.content.type;
   }
 
+  get currentContent() {
+    if (!this.isEdited()) return this.content;
+
+    return this.editions.at(-1)!.content;
+  }
+
   isSentBy(userId: Id) {
     return userId === this._props.senderId;
+  }
+
+  isEdited() {
+    return this.editions.length > 0;
   }
 
   edit(update: MessageUpdate) {
@@ -55,7 +80,7 @@ export class Message extends StateAggregateBase<MessageProps> {
 
     const { messageId, editorId, content } = update;
 
-    if (messageId !== this.id()) throw new Error("Invalid update (messageId)");
+    if (messageId !== this.id()) throw new Error(`Invalid update ${messageId}`);
 
     if (this.isSentBy(editorId))
       throw new Error("Just only message sender can edit the message");
@@ -63,9 +88,12 @@ export class Message extends StateAggregateBase<MessageProps> {
     if (content.type !== this.contentType)
       throw new Error("Cannot update message with different type of content");
 
-    this._props.content = content;
-    this._props.edited = true;
-    this._props.editedAt = new Date();
+    const edition = new MessageEdition({
+      content,
+      editedAt: new Date(),
+    });
+
+    this._props.editions.push(edition);
 
     this.recordEvent(MessageEdited, {
       chatId: this.chatId,
@@ -74,6 +102,6 @@ export class Message extends StateAggregateBase<MessageProps> {
   }
 
   getContent() {
-    return this._props.content.clone();
+    return this.currentContent.clone();
   }
 }
